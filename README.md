@@ -1,2 +1,2 @@
-# brindas-glamour-world
-brindas-glamour-world
+# BrindaWorld
+BrindaWorld

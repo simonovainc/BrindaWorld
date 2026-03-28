@@ -1,8 +1,9 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const db = require('./db');
-const apiRoutes = require('./routes/api');
+const path = require('path');
+const db = require('./src/db');
+const apiRoutes = require('./src/routes/api');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -15,12 +16,15 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Routes
+// Serve React static files (production build)
+app.use(express.static(path.join(__dirname, 'client/dist')));
+
+// API routes
 app.use('/api', apiRoutes);
 
-// 404 handler
-app.use((req, res) => {
-  res.status(404).json({ error: 'Route not found' });
+// React client-side routing — must be after API routes
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'client/dist/index.html'));
 });
 
 // Global error handler

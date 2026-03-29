@@ -3,6 +3,12 @@ const router  = express.Router();
 const supabase = require('../lib/supabase');
 const { pool } = require('../db');
 const { verifyToken } = require('../middleware/auth');
+const {
+  generatePublicId,
+  validateChildName,
+  sanitizeForDisplay,
+  suggestChildName,
+} = require('../utils/identity');
 
 // ─────────────────────────────────────────────────────────
 // POST /api/auth/register
@@ -257,7 +263,13 @@ router.get('/me', verifyToken, async (req, res) => {
 
 // ─────────────────────────────────────────────────────────
 // POST /api/auth/child  (protected — parent only)
-// Creates child profile + COPPA parental consent record
+// Creates child profile + COPPA parental consent record.
+//
+// Business rules (CMMI Level 5):
+//   • Name validated via identity.validateChildName()
+//   • Duplicate active name → 409 with nickname suggestion
+//   • Soft-deleted name may be re-added (new row, fresh public_id)
+//   • public_id UUID generated here; never expose internal id
 // ─────────────────────────────────────────────────────────
 router.post('/child', verifyToken, async (req, res) => {
   if (req.user.role !== 'parent') {
@@ -266,27 +278,60 @@ router.post('/child', verifyToken, async (req, res) => {
 
   const { name, age, avatar } = req.body;
 
-  if (!name || !age) {
-    return res.status(400).json({ error: 'Name and age are required' });
+  // ── Name validation ──────────────────────────────────
+  const nameCheck = validateChildName(name);
+  if (!nameCheck.valid) {
+    return res.status(400).json({ error: nameCheck.error });
+  }
+
+  const cleanName = sanitizeForDisplay(name);
+
+  if (!age) {
+    return res.status(400).json({ error: 'Age is required.' });
   }
 
   const ageNum = parseInt(age, 10);
   if (isNaN(ageNum) || ageNum < 3 || ageNum > 14) {
-    return res.status(400).json({ error: 'Age must be between 3 and 14' });
+    return res.status(400).json({ error: 'Age must be between 3 and 14.' });
   }
 
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
 
-    // 1. Insert child record
+    // ── Duplicate name check (active children only) ──
+    const [activeRows] = await conn.query(
+      `SELECT name FROM children
+       WHERE parent_user_id = ? AND deleted_at IS NULL`,
+      [req.user.id]
+    );
+    const activeNames = activeRows.map(r => r.name);
+
+    const isDuplicate = activeNames.some(
+      n => n.trim().toLowerCase() === cleanName.toLowerCase()
+    );
+
+    if (isDuplicate) {
+      await conn.rollback();
+      const suggestion = suggestChildName(cleanName, activeNames);
+      return res.status(409).json({
+        error: `You already have a child named "${cleanName}". Try a nickname like "${suggestion}".`,
+        suggestion,
+      });
+    }
+
+    // ── Generate stable external UUID ───────────────
+    const publicId = generatePublicId();
+
+    // ── Insert child record ──────────────────────────
     const [childResult] = await conn.query(
-      'INSERT INTO children (parent_user_id, name, age, avatar) VALUES (?, ?, ?, ?)',
-      [req.user.id, name.trim(), ageNum, avatar || '🧒']
+      `INSERT INTO children (public_id, parent_user_id, name, age, avatar)
+       VALUES (?, ?, ?, ?, ?)`,
+      [publicId, req.user.id, cleanName, ageNum, avatar || '🧒']
     );
     const childId = childResult.insertId;
 
-    // 2. Create parental consent record (COPPA compliance)
+    // ── COPPA parental consent record ───────────────
     await conn.query(
       `INSERT INTO parental_consents
          (parent_user_id, child_id, consent_type, consent_version, verification_method)
@@ -298,16 +343,18 @@ router.post('/child', verifyToken, async (req, res) => {
 
     res.status(201).json({
       child: {
-        id:           childId,
-        parentUserId: req.user.id,
-        name:         name.trim(),
-        age:          ageNum,
-        avatar:       avatar || '🧒',
+        id:     publicId,   // ← UUID, never the internal numeric id
+        name:   cleanName,
+        age:    ageNum,
+        avatar: avatar || '🧒',
       },
     });
   } catch (err) {
     await conn.rollback();
     console.error('[addChild]', err.message);
+    if (err.code === 'ER_DUP_ENTRY') {
+      return res.status(409).json({ error: 'A child with this name already exists.' });
+    }
     res.status(500).json({ error: 'Failed to add child' });
   } finally {
     conn.release();
@@ -316,17 +363,29 @@ router.post('/child', verifyToken, async (req, res) => {
 
 // ─────────────────────────────────────────────────────────
 // GET /api/auth/children  (protected)
+// Returns children with public_id exposed as `id`.
+// Internal numeric id is NEVER sent to the client.
 // ─────────────────────────────────────────────────────────
 router.get('/children', verifyToken, async (req, res) => {
   try {
     const [rows] = await pool.query(
-      `SELECT id, name, age, avatar, created_at
+      `SELECT public_id, name, display_name, age, avatar, created_at
        FROM children
        WHERE parent_user_id = ? AND deleted_at IS NULL
        ORDER BY created_at ASC`,
       [req.user.id]
     );
-    res.json({ children: rows });
+
+    const children = rows.map(r => ({
+      id:          r.public_id,                            // UUID — stable external id
+      name:        r.name,
+      displayName: r.display_name || r.name,              // fallback to name if no nickname
+      age:         r.age,
+      avatar:      r.avatar,
+      createdAt:   r.created_at,
+    }));
+
+    res.json({ children });
   } catch (err) {
     console.error('[children]', err.message);
     res.status(500).json({ error: 'Failed to fetch children' });
@@ -335,15 +394,34 @@ router.get('/children', verifyToken, async (req, res) => {
 
 // ─────────────────────────────────────────────────────────
 // DELETE /api/auth/child/:id  (protected)
-// Soft-deletes by setting deleted_at
+// Soft-deletes a child record by setting deleted_at.
+// Also sets active_sentinel to timestamp so the name can be
+// reused by a future INSERT (idempotent uniqueness pattern).
+//
+// :id may be either:
+//   • UUID string  (public_id)  — preferred
+//   • numeric string            — legacy fallback
 // ─────────────────────────────────────────────────────────
 router.delete('/child/:id', verifyToken, async (req, res) => {
+  const rawId   = req.params.id;
+  const isUuid  = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawId);
+  const isNumeric = /^\d+$/.test(rawId);
+
+  if (!isUuid && !isNumeric) {
+    return res.status(400).json({ error: 'Invalid child identifier.' });
+  }
+
   try {
+    const whereClause = isUuid
+      ? 'public_id = ? AND parent_user_id = ? AND deleted_at IS NULL'
+      : 'id = ?        AND parent_user_id = ? AND deleted_at IS NULL';
+
     const [result] = await pool.query(
       `UPDATE children
-       SET deleted_at = NOW()
-       WHERE id = ? AND parent_user_id = ? AND deleted_at IS NULL`,
-      [req.params.id, req.user.id]
+       SET deleted_at     = NOW(),
+           active_sentinel = DATE_FORMAT(NOW(), '%Y-%m-%d %H:%i:%s')
+       WHERE ${whereClause}`,
+      [rawId, req.user.id]
     );
 
     if (result.affectedRows === 0) {

@@ -13,6 +13,7 @@ const MIGRATION_FILES = [
   '005_warehouse.sql',
   '006_governance.sql',
   '007_auth.sql',
+  '009_children_identity.sql',
 ];
 
 async function runMigrations() {

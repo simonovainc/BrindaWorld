@@ -26,11 +26,13 @@ function Dashboard() {
   const { user, children, loading, logout, addChild, removeChild, fetchChildren } = useAuth();
   const navigate = useNavigate();
 
-  const [planType,     setPlanType]     = useState('free');
-  const [showAddForm,  setShowAddForm]  = useState(false);
-  const [newChild,     setNewChild]     = useState({ name: '', age: '', avatar: '🧒' });
-  const [addLoading,   setAddLoading]   = useState(false);
-  const [addError,     setAddError]     = useState('');
+  const [planType,      setPlanType]      = useState('free');
+  const [showAddForm,   setShowAddForm]   = useState(false);
+  const [newChild,      setNewChild]      = useState({ name: '', age: '', avatar: '🧒' });
+  const [addLoading,    setAddLoading]    = useState(false);
+  const [addError,      setAddError]      = useState('');
+  const [suggestion,    setSuggestion]    = useState('');  // nickname suggestion on 409
+  const [confirmDelete, setConfirmDelete] = useState(null); // child object to confirm delete
 
   // Fetch children + subscription info on mount
   useEffect(() => {
@@ -44,19 +46,47 @@ function Dashboard() {
   const handleAddChild = async (e) => {
     e.preventDefault();
     setAddError('');
+    setSuggestion('');
+
     if (!newChild.name.trim() || !newChild.age) {
       setAddError('Name and age are required.');
       return;
     }
+
     setAddLoading(true);
     try {
       await addChild(newChild.name.trim(), parseInt(newChild.age, 10), newChild.avatar);
       setNewChild({ name: '', age: '', avatar: '🧒' });
       setShowAddForm(false);
     } catch (err) {
-      setAddError(err.response?.data?.error || 'Failed to add child.');
+      const serverError = err.response?.data?.error || 'Failed to add child.';
+      const serverSuggestion = err.response?.data?.suggestion || '';
+
+      setAddError(serverError);
+      if (err.response?.status === 409 && serverSuggestion) {
+        setSuggestion(serverSuggestion);
+      }
     } finally {
       setAddLoading(false);
+    }
+  };
+
+  // Apply nickname suggestion with one click
+  const applySuggestion = () => {
+    setNewChild(p => ({ ...p, name: suggestion }));
+    setAddError('');
+    setSuggestion('');
+  };
+
+  // Confirm → remove child using its public_id (UUID)
+  const handleConfirmDelete = async () => {
+    if (!confirmDelete) return;
+    try {
+      await removeChild(confirmDelete.id); // id = public_id UUID
+    } catch (err) {
+      console.error('[deleteChild]', err.message);
+    } finally {
+      setConfirmDelete(null);
     }
   };
 
@@ -143,7 +173,7 @@ function Dashboard() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
             <h2 style={{ color: T.text, margin: 0, fontSize: '1.15rem', fontWeight: 700 }}>Your Children</h2>
             <button
-              onClick={() => { setShowAddForm(!showAddForm); setAddError(''); }}
+              onClick={() => { setShowAddForm(!showAddForm); setAddError(''); setSuggestion(''); }}
               style={{
                 background: `linear-gradient(135deg, ${T.primary}, ${T.secondary})`,
                 color: 'white', border: 'none', borderRadius: 9,
@@ -167,10 +197,36 @@ function Dashboard() {
 
               {addError && (
                 <div style={{
-                  color: T.primary, background: '#fff0f5', border: `1px solid ${T.border}`,
-                  borderRadius: 8, padding: '0.7rem 0.9rem', marginBottom: '1rem', fontSize: '0.86rem',
+                  color: '#991b1b', background: '#fef2f2',
+                  border: '1px solid #fecaca',
+                  borderRadius: 8, padding: '0.7rem 0.9rem', marginBottom: '0.6rem', fontSize: '0.86rem',
+                  lineHeight: 1.5,
                 }}>
                   {addError}
+                </div>
+              )}
+
+              {/* Nickname suggestion banner */}
+              {suggestion && (
+                <div style={{
+                  background: '#f0fff4', border: '1px solid #9ae6b4',
+                  borderRadius: 8, padding: '0.65rem 0.9rem',
+                  marginBottom: '1rem', fontSize: '0.86rem', color: '#276749',
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem',
+                }}>
+                  <span>💡 Try the nickname <strong>"{suggestion}"</strong> instead?</span>
+                  <button
+                    type="button"
+                    onClick={applySuggestion}
+                    style={{
+                      background: '#276749', color: 'white',
+                      border: 'none', borderRadius: 6,
+                      padding: '0.3rem 0.75rem', cursor: 'pointer',
+                      fontSize: '0.82rem', fontWeight: 700, whiteSpace: 'nowrap',
+                    }}
+                  >
+                    Use it
+                  </button>
                 </div>
               )}
 
@@ -183,7 +239,7 @@ function Dashboard() {
                     <input
                       type="text" placeholder="Child's name"
                       value={newChild.name}
-                      onChange={e => setNewChild(p => ({ ...p, name: e.target.value }))}
+                      onChange={e => { setNewChild(p => ({ ...p, name: e.target.value })); setAddError(''); setSuggestion(''); }}
                       style={inputStyle}
                     />
                   </div>
@@ -265,7 +321,7 @@ function Dashboard() {
                     {child.avatar || '🧒'}
                   </div>
                   <div style={{ color: T.text, fontWeight: 700, fontSize: '1rem', marginBottom: '0.2rem' }}>
-                    {child.name}
+                    {child.displayName || child.name}
                   </div>
                   <div style={{ color: T.light, fontSize: '0.82rem', marginBottom: '1rem' }}>
                     Age {child.age}
@@ -275,8 +331,21 @@ function Dashboard() {
                     color: 'white', border: 'none', borderRadius: 8,
                     padding: '0.42rem 0', cursor: 'pointer',
                     fontSize: '0.84rem', fontWeight: 700, width: '100%',
+                    marginBottom: '0.45rem',
                   }}>
                     Play Now 🎮
+                  </button>
+                  <button
+                    onClick={() => setConfirmDelete(child)}
+                    style={{
+                      background: 'transparent',
+                      color: T.light, border: `1px solid ${T.border}`,
+                      borderRadius: 8, padding: '0.35rem 0',
+                      cursor: 'pointer', fontSize: '0.78rem',
+                      width: '100%',
+                    }}
+                  >
+                    Remove
                   </button>
                 </div>
               ))}
@@ -284,6 +353,58 @@ function Dashboard() {
           )}
         </div>
       </main>
+
+      {/* ── Delete confirmation modal ── */}
+      {confirmDelete && (
+        <div style={{
+          position: 'fixed', inset: 0,
+          background: 'rgba(0,0,0,0.45)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 999, padding: '1rem',
+        }}>
+          <div style={{
+            background: 'white', borderRadius: 18,
+            padding: '2rem 2.2rem', maxWidth: 380, width: '100%',
+            boxShadow: '0 12px 48px rgba(0,0,0,0.2)',
+            textAlign: 'center',
+          }}>
+            <div style={{ fontSize: '3rem', marginBottom: '0.5rem' }}>
+              {confirmDelete.avatar || '🧒'}
+            </div>
+            <h3 style={{ color: T.text, margin: '0 0 0.5rem', fontSize: '1.1rem', fontWeight: 800 }}>
+              Remove {confirmDelete.displayName || confirmDelete.name}?
+            </h3>
+            <p style={{ color: T.light, fontSize: '0.88rem', margin: '0 0 1.5rem', lineHeight: 1.5 }}>
+              This will remove <strong>{confirmDelete.displayName || confirmDelete.name}</strong> from your account.
+              You can always add them back later.
+            </p>
+            <div style={{ display: 'flex', gap: '0.75rem' }}>
+              <button
+                onClick={() => setConfirmDelete(null)}
+                style={{
+                  flex: 1, padding: '0.65rem',
+                  background: 'white', color: T.text,
+                  border: `1.5px solid ${T.border}`, borderRadius: 10,
+                  cursor: 'pointer', fontWeight: 700, fontSize: '0.92rem',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmDelete}
+                style={{
+                  flex: 1, padding: '0.65rem',
+                  background: '#dc2626', color: 'white',
+                  border: 'none', borderRadius: 10,
+                  cursor: 'pointer', fontWeight: 700, fontSize: '0.92rem',
+                }}
+              >
+                Remove
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

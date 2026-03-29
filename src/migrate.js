@@ -16,6 +16,8 @@ const MIGRATION_FILES = [
   '009_children_identity.sql',
   '010_pricing_v2.sql',
   '011_feedback.sql',
+  '012_integrity.sql',
+  '013_competitions.sql',
 ];
 
 async function runMigrations() {

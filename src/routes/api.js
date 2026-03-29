@@ -63,8 +63,40 @@ function autoSubject(type, serviceRequested, email) {
 // ══════════════════════════════════════════════════════════════════════════════
 
 // ── GET /api/health ───────────────────────────────────────────────────────────
-router.get('/health', (req, res) => {
-  res.json({ status: 'ok', platform: 'BrindaWorld' });
+// Checks MySQL and Supabase independently.
+// Always returns HTTP 200 so the client can read the body even when degraded.
+router.get('/health', async (req, res) => {
+  let mysqlStatus    = 'connected';
+  let supabaseStatus = 'connected';
+
+  // MySQL probe — lightweight ping
+  try {
+    await pool.query('SELECT 1');
+  } catch (_) {
+    mysqlStatus = 'down';
+  }
+
+  // Supabase probe — local session call, no network roundtrip needed
+  try {
+    const supabase = require('../lib/supabase');
+    const { error } = await supabase.auth.getSession();
+    if (error) supabaseStatus = 'down';
+  } catch (_) {
+    supabaseStatus = 'down';
+  }
+
+  const overallStatus = (mysqlStatus === 'connected' && supabaseStatus === 'connected')
+    ? 'ok'
+    : 'degraded';
+
+  res.json({
+    status:         overallStatus,
+    mysql:          mysqlStatus,
+    supabase:       supabaseStatus,
+    uptime_seconds: Math.round(process.uptime()),
+    timestamp:      new Date().toISOString(),
+    platform:       'BrindaWorld',
+  });
 });
 
 // ── GET /api/competitions ─────────────────────────────────────────────────────

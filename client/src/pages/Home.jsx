@@ -4,8 +4,9 @@
  * Fully responsive. Pure inline styles — no CSS library required.
  */
 
-import { useRef } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import api from '../api';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const C = {
@@ -150,6 +151,14 @@ const GLOBAL_STYLES = `
 // ── Component ─────────────────────────────────────────────────────────────────
 function Home() {
   const sheCanBeRef = useRef(null);
+  const [apiDown, setApiDown] = useState(false);
+
+  // Probe health endpoint once on mount — used to show offline badge
+  useEffect(() => {
+    api.get('/health')
+      .then(res => setApiDown(res.data?.status !== 'ok'))
+      .catch(() => setApiDown(true));
+  }, []);
 
   const scrollTo = (ref) => ref?.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
@@ -351,9 +360,25 @@ function Home() {
           ══════════════════════════════════════════════════════════════ */}
       <section style={{ background: C.white, padding: '60px 1.5rem' }}>
         <div style={{ maxWidth: 1100, margin: '0 auto' }}>
-          <h2 style={{ textAlign: 'center', color: C.darkPurple, fontSize: '2rem', fontWeight: 800, marginBottom: '2.5rem' }}>
-            Brinda's Favourites 🎮
-          </h2>
+          <div style={{ textAlign: 'center', marginBottom: '2.5rem' }}>
+            <h2 style={{ color: C.darkPurple, fontSize: '2rem', fontWeight: 800, margin: '0 0 0.5rem' }}>
+              Brinda's Favourites 🎮
+            </h2>
+            {apiDown && (
+              <span style={{
+                display:      'inline-block',
+                background:   '#1e3a5f',
+                color:        'white',
+                borderRadius: 50,
+                padding:      '0.25rem 0.9rem',
+                fontSize:     '0.78rem',
+                fontWeight:   600,
+                letterSpacing:'0.02em',
+              }}>
+                🎮 Playing offline mode — all free games still available
+              </span>
+            )}
+          </div>
 
           <div className="game-grid" style={{
             display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.5rem',

@@ -151,7 +151,11 @@ const GLOBAL_STYLES = `
 // ── Component ─────────────────────────────────────────────────────────────────
 function Home() {
   const sheCanBeRef = useRef(null);
-  const [apiDown, setApiDown] = useState(false);
+  const [apiDown,       setApiDown]       = useState(false);
+  const [emailVal,      setEmailVal]      = useState('');
+  const [emailLoading,  setEmailLoading]  = useState(false);
+  const [emailDone,     setEmailDone]     = useState('');   // success message
+  const [emailError,    setEmailError]    = useState('');
 
   // Probe health endpoint once on mount — used to show offline badge
   useEffect(() => {
@@ -159,6 +163,29 @@ function Home() {
       .then(res => setApiDown(res.data?.status !== 'ok'))
       .catch(() => setApiDown(true));
   }, []);
+
+  const handleEmailSubmit = async (e) => {
+    e.preventDefault();
+    const trimmed = emailVal.trim();
+    if (!trimmed || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+      setEmailError('Please enter a valid email address.');
+      return;
+    }
+    setEmailError('');
+    setEmailLoading(true);
+    try {
+      await api.post('/leads', {
+        email:       trimmed,
+        lead_type:   'parent',
+        lead_source: 'homepage_email',
+      });
+      setEmailDone("You're in! Check your email 💌");
+    } catch (err) {
+      setEmailError(err.response?.data?.error || 'Something went wrong. Please try again.');
+    } finally {
+      setEmailLoading(false);
+    }
+  };
 
   const scrollTo = (ref) => ref?.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
@@ -451,43 +478,50 @@ function Home() {
           Get free learning resources, game updates and confidence-building tips.
         </p>
 
-        {/* Mailchimp inline form */}
-        <form
-          action="https://brindaworld.us11.list-manage.com/subscribe/post?u=ff7d6cf0ce5d289b96376c072&id=079f449129&f_id=00bc97e0f0"
-          method="post"
-          target="_blank"
-          noValidate
-          style={{ display: 'flex', justifyContent: 'center', gap: '0.75rem', flexWrap: 'wrap' }}
-        >
-          <input
-            type="email"
-            name="EMAIL"
-            placeholder="Your email address"
-            required
-            style={{
-              padding: '0.85rem 1.4rem', borderRadius: 50,
-              border: 'none', fontSize: '1rem',
-              minWidth: 280, outline: 'none',
-              boxShadow: '0 2px 12px rgba(0,0,0,0.12)',
-            }}
-          />
-          {/* Mailchimp anti-bot field */}
-          <div style={{ position: 'absolute', left: -5000 }} aria-hidden="true">
-            <input type="text" name="b_ff7d6cf0ce5d289b96376c072_079f449129" tabIndex="-1" defaultValue="" readOnly />
-          </div>
-          <button
-            type="submit"
-            style={{
-              background: C.darkPurple, color: C.white,
-              border: 'none', borderRadius: 50,
-              padding: '0.85rem 2rem', fontSize: '1rem',
-              fontWeight: 700, cursor: 'pointer',
-              boxShadow: '0 4px 16px rgba(0,0,0,0.2)',
-            }}
+        {emailDone ? (
+          <p style={{ color: C.white, fontSize: '1.15rem', fontWeight: 700, marginTop: '0.5rem' }}>
+            {emailDone}
+          </p>
+        ) : (
+          <form
+            onSubmit={handleEmailSubmit}
+            noValidate
+            style={{ display: 'flex', justifyContent: 'center', gap: '0.75rem', flexWrap: 'wrap' }}
           >
-            Join Free 🚀
-          </button>
-        </form>
+            <input
+              type="email"
+              value={emailVal}
+              onChange={e => { setEmailVal(e.target.value); setEmailError(''); }}
+              placeholder="Your email address"
+              required
+              style={{
+                padding: '0.85rem 1.4rem', borderRadius: 50,
+                border: 'none', fontSize: '1rem',
+                minWidth: 280, outline: 'none',
+                boxShadow: '0 2px 12px rgba(0,0,0,0.12)',
+              }}
+            />
+            <button
+              type="submit"
+              disabled={emailLoading}
+              style={{
+                background: C.darkPurple, color: C.white,
+                border: 'none', borderRadius: 50,
+                padding: '0.85rem 2rem', fontSize: '1rem',
+                fontWeight: 700, cursor: emailLoading ? 'not-allowed' : 'pointer',
+                opacity: emailLoading ? 0.7 : 1,
+                boxShadow: '0 4px 16px rgba(0,0,0,0.2)',
+              }}
+            >
+              {emailLoading ? 'Joining…' : 'Join Free 🚀'}
+            </button>
+          </form>
+        )}
+        {emailError && (
+          <p style={{ color: '#FFD6D6', fontSize: '0.9rem', marginTop: '0.75rem' }}>
+            {emailError}
+          </p>
+        )}
       </section>
 
       {/* ══════════════════════════════════════════════════════════════

@@ -18,6 +18,7 @@ const MIGRATION_FILES = [
   '011_feedback.sql',
   '012_integrity.sql',
   '013_competitions.sql',
+  '014_leads.sql',
 ];
 
 async function runMigrations() {

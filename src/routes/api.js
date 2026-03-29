@@ -62,6 +62,86 @@ function autoSubject(type, serviceRequested, email) {
 // PUBLIC ROUTES
 // ══════════════════════════════════════════════════════════════════════════════
 
+// ── POST /api/leads ───────────────────────────────────────────────────────────
+// Public — no auth required (used before registration).
+// Upserts a lead row in MySQL; returns 201 (new) or 200 (existing updated).
+// The browser NEVER posts directly to Mailchimp.
+// Downstream sync to Mailchimp/Resend is handled server-side (Session 18).
+//
+// Request body
+//   email        string  required
+//   lead_type    string  optional  parent|teacher|school|district|partner|other
+//   lead_source  string  optional  e.g. homepage_email, register_page
+//   first_name   string  optional
+//   last_name    string  optional
+//   school_name  string  optional
+//   province     string  optional
+//   notes        string  optional
+router.post('/leads', async (req, res) => {
+  const {
+    email,
+    lead_type   = 'parent',
+    lead_source = 'unknown',
+    first_name,
+    last_name,
+    school_name,
+    province,
+    notes,
+  } = req.body;
+
+  // ── Validate email ────────────────────────────────────────────────────────
+  if (!email || typeof email !== 'string' || !email.includes('@')) {
+    return res.status(400).json({ error: 'A valid email address is required.' });
+  }
+
+  const VALID_TYPES = new Set(['parent','teacher','school','district','partner','other']);
+  const resolvedType = VALID_TYPES.has(lead_type) ? lead_type : 'other';
+
+  try {
+    const publicId = generatePublicId();
+
+    // Upsert: insert new row or update source/type for returning leads
+    const [result] = await pool.query(
+      `INSERT INTO leads
+         (public_id, email, lead_type, lead_source, first_name, last_name,
+          school_name, province, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+         lead_source  = IF(lead_source = 'unknown', VALUES(lead_source), lead_source),
+         lead_type    = IF(status = 'new', VALUES(lead_type), lead_type),
+         first_name   = COALESCE(VALUES(first_name), first_name),
+         last_name    = COALESCE(VALUES(last_name), last_name),
+         school_name  = COALESCE(VALUES(school_name), school_name),
+         province     = COALESCE(VALUES(province), province),
+         updated_at   = NOW()`,
+      [
+        publicId,
+        email.trim().toLowerCase(),
+        resolvedType,
+        lead_source,
+        first_name  || null,
+        last_name   || null,
+        school_name || null,
+        province    || null,
+        notes       || null,
+      ]
+    );
+
+    const isNew = result.affectedRows === 1 && result.insertId > 0;
+    console.log(`[leads] ${isNew ? 'NEW' : 'UPDATED'} lead: ${email} source=${lead_source}`);
+
+    res.status(isNew ? 201 : 200).json({
+      success: true,
+      message: isNew
+        ? 'You are on the list! Check your inbox. 💌'
+        : 'You are already on the list — we will be in touch!',
+    });
+  } catch (err) {
+    console.error('[leads]', err.message);
+    res.status(500).json({ error: 'Could not save your email. Please try again.' });
+  }
+});
+
 // ── GET /api/health ───────────────────────────────────────────────────────────
 // Checks MySQL and Supabase independently.
 // Always returns HTTP 200 so the client can read the body even when degraded.

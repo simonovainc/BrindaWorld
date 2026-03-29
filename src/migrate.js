@@ -14,6 +14,7 @@ const MIGRATION_FILES = [
   '006_governance.sql',
   '007_auth.sql',
   '009_children_identity.sql',
+  '010_pricing_v2.sql',
 ];
 
 async function runMigrations() {

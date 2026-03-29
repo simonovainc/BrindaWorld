@@ -42,6 +42,20 @@ router.post('/register', async (req, res) => {
   }
 
   try {
+    // ── Step 0: Check MySQL first ────────────────────────
+    // If the user is already fully registered, tell them to sign in.
+    console.log('[register] Checking MySQL for existing email...');
+    const [existing] = await pool.query(
+      'SELECT id FROM users WHERE email = ? AND deleted_at IS NULL LIMIT 1',
+      [email]
+    );
+    if (existing.length) {
+      console.log('[register] Email already in MySQL — returning 409');
+      return res.status(409).json({
+        error: 'An account with this email address already exists. Please sign in instead.',
+      });
+    }
+
     // ── Step 1: Create user in Supabase Auth ─────────────
     console.log('[register] Creating Supabase user...');
     const { data, error } = await supabase.auth.signUp({
@@ -50,51 +64,88 @@ router.post('/register', async (req, res) => {
       options: { data: { firstName, lastName, role } },
     });
 
+    let supaUser, session;
+
     if (error) {
-      console.error('[register] Supabase error (full):', JSON.stringify(error, null, 2));
-      const mapped = mapSupabaseRegisterError(error);
-      return res.status(mapped.status).json({ error: mapped.message });
+      const code = error?.code || '';
+      const msg  = (error?.message || '').toLowerCase();
+      const isAlreadyExists =
+        code === 'user_already_exists' ||
+        msg.includes('already registered') ||
+        msg.includes('already been registered');
+
+      if (isAlreadyExists) {
+        // Supabase user exists but MySQL insert previously failed — recover.
+        // Sign in to obtain the existing user's ID and a fresh session.
+        console.log('[register] Supabase user exists but MySQL row missing — recovering via sign-in...');
+        const { data: signInData, error: signInError } =
+          await supabase.auth.signInWithPassword({ email, password });
+
+        if (signInError) {
+          // Wrong password or other sign-in failure — not our partial-insert case
+          console.error('[register] Recovery sign-in failed:', JSON.stringify(signInError, null, 2));
+          return res.status(409).json({
+            error: 'An account with this email address already exists. Please sign in instead.',
+          });
+        }
+
+        supaUser = signInData.user;
+        session  = signInData.session;
+        console.log('[register] Recovery: obtained Supabase user via sign-in:', supaUser.id);
+      } else {
+        console.error('[register] Supabase error (full):', JSON.stringify(error, null, 2));
+        const mapped = mapSupabaseRegisterError(error);
+        return res.status(mapped.status).json({ error: mapped.message });
+      }
+    } else {
+      supaUser = data.user;
+      session  = data.session;
+
+      if (!supaUser) {
+        console.error('[register] Supabase returned no user. data:', JSON.stringify(data, null, 2));
+        return res.status(400).json({ error: 'Please enter a valid email address.' });
+      }
+      console.log('[register] Supabase user created:', supaUser.id);
     }
 
-    const supaUser = data.user;
-    const session  = data.session;
-
-    // Supabase returns user but no session when email confirmation is required
-    if (!supaUser) {
-      console.error('[register] Supabase returned no user. data:', JSON.stringify(data, null, 2));
-      return res.status(400).json({ error: 'Please enter a valid email address.' });
-    }
-
-    console.log('[register] Supabase user created:', supaUser.id);
-
-    // ── Step 2: Insert into MySQL users table ────────────
-    console.log('[register] Inserting MySQL user...');
-    const [result] = await pool.query(
-      `INSERT INTO users
-         (email, role, first_name, last_name, supabase_id, email_verified)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [email, role, firstName, lastName, supaUser.id,
-       supaUser.email_confirmed_at ? 1 : 0]
+    // ── Step 2: Insert into MySQL (idempotent) ────────────
+    // Guard against the case where supabase_id already has a row
+    // (e.g. a second recovery attempt after a partial failure).
+    console.log('[register] Checking MySQL for existing supabase_id...');
+    const [existingBySupaId] = await pool.query(
+      'SELECT id, email, role, first_name, last_name FROM users WHERE supabase_id = ? LIMIT 1',
+      [supaUser.id]
     );
 
-    const user = {
-      id:         result.insertId,
-      email,
-      role,
-      firstName,
-      lastName,
-      supabaseId: supaUser.id,
-    };
+    let user;
 
-    console.log('[register] Done. MySQL user id:', result.insertId);
+    if (existingBySupaId.length) {
+      // Row already exists — return it as a success (idempotent)
+      console.log('[register] MySQL row already exists for supabase_id — returning existing record');
+      const u = existingBySupaId[0];
+      user = { id: u.id, email: u.email, role: u.role, firstName: u.first_name, lastName: u.last_name, supabaseId: supaUser.id };
+    } else {
+      console.log('[register] Inserting MySQL user...');
+      const [result] = await pool.query(
+        `INSERT INTO users
+           (email, role, first_name, last_name, supabase_id, email_verified)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [email, role, firstName, lastName, supaUser.id,
+         supaUser.email_confirmed_at ? 1 : 0]
+      );
+      user = { id: result.insertId, email, role, firstName, lastName, supabaseId: supaUser.id };
+      console.log('[register] Done. MySQL user id:', result.insertId);
+    }
+
     res.status(201).json({ user, session });
 
   } catch (err) {
     console.error('[register] Caught exception (full):', JSON.stringify(err, Object.getOwnPropertyNames(err), 2));
 
-    // MySQL duplicate entry (email already in users table but not Supabase — edge case)
     if (err.code === 'ER_DUP_ENTRY') {
-      return res.status(409).json({ error: 'An account with this email address already exists. Please sign in instead.' });
+      return res.status(409).json({
+        error: 'An account with this email address already exists. Please sign in instead.',
+      });
     }
     res.status(500).json({ error: 'Something went wrong. Please try again in a moment.' });
   }

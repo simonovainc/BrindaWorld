@@ -41,10 +41,17 @@ export function AuthProvider({ children: jsx }) {
 
   // ── Auth functions ───────────────────────────────────────
   const register = async (email, password, firstName, lastName, role) => {
-    const { data } = await api.post('/auth/register',
-      { email, password, firstName, lastName, role });
-    persist(data.user, data.session);
-    return data;
+    try {
+      const { data } = await api.post('/auth/register',
+        { email, password, firstName, lastName, role });
+      persist(data.user, data.session);
+      return data;
+    } catch (err) {
+      // Extract and re-throw a clean Error with the server message
+      const message = err.response?.data?.error
+        || 'Something went wrong. Please try again in a moment.';
+      throw new Error(message);
+    }
   };
 
   const login = async (email, password) => {

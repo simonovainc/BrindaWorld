@@ -7,18 +7,43 @@ const { verifyToken } = require('../middleware/auth');
 // ─────────────────────────────────────────────────────────
 // POST /api/auth/register
 // ─────────────────────────────────────────────────────────
+
+// Map Supabase error codes / messages → user-friendly text + HTTP status
+function mapSupabaseRegisterError(error) {
+  const code = error?.code || '';
+  const msg  = (error?.message || '').toLowerCase();
+
+  if (code === 'user_already_exists' || msg.includes('already registered') || msg.includes('already been registered')) {
+    return { status: 409, message: 'An account with this email address already exists. Please sign in instead.' };
+  }
+  if (code === 'email_address_invalid' || msg.includes('invalid email') || msg.includes('valid email')) {
+    return { status: 400, message: 'Please enter a valid email address.' };
+  }
+  if (code === 'weak_password' || msg.includes('weak password') || msg.includes('at least') || msg.includes('password should')) {
+    return { status: 400, message: 'Password must be at least 8 characters long and contain at least one uppercase letter, one number, and one special character.' };
+  }
+  if (msg.includes('password') && (msg.includes('characters') || msg.includes('short'))) {
+    return { status: 400, message: 'Password must be at least 8 characters long.' };
+  }
+  return { status: 400, message: error.message };
+}
+
 router.post('/register', async (req, res) => {
   const { email, password, firstName, lastName, role } = req.body;
 
+  console.log('[register] Incoming request:', { email, firstName, lastName, role });
+
+  // ── Validation ───────────────────────────────────────────
   if (!email || !password || !firstName || !lastName) {
-    return res.status(400).json({ error: 'All fields are required' });
+    return res.status(400).json({ error: 'Please fill in all required fields.' });
   }
   if (!['parent', 'teacher'].includes(role)) {
-    return res.status(400).json({ error: 'Role must be parent or teacher' });
+    return res.status(400).json({ error: 'Please fill in all required fields.' });
   }
 
   try {
-    // 1. Create user in Supabase Auth
+    // ── Step 1: Create user in Supabase Auth ─────────────
+    console.log('[register] Creating Supabase user...');
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -26,13 +51,24 @@ router.post('/register', async (req, res) => {
     });
 
     if (error) {
-      return res.status(400).json({ error: error.message });
+      console.error('[register] Supabase error (full):', JSON.stringify(error, null, 2));
+      const mapped = mapSupabaseRegisterError(error);
+      return res.status(mapped.status).json({ error: mapped.message });
     }
 
     const supaUser = data.user;
     const session  = data.session;
 
-    // 2. Insert into MySQL users table
+    // Supabase returns user but no session when email confirmation is required
+    if (!supaUser) {
+      console.error('[register] Supabase returned no user. data:', JSON.stringify(data, null, 2));
+      return res.status(400).json({ error: 'Please enter a valid email address.' });
+    }
+
+    console.log('[register] Supabase user created:', supaUser.id);
+
+    // ── Step 2: Insert into MySQL users table ────────────
+    console.log('[register] Inserting MySQL user...');
     const [result] = await pool.query(
       `INSERT INTO users
          (email, role, first_name, last_name, supabase_id, email_verified)
@@ -50,13 +86,17 @@ router.post('/register', async (req, res) => {
       supabaseId: supaUser.id,
     };
 
+    console.log('[register] Done. MySQL user id:', result.insertId);
     res.status(201).json({ user, session });
+
   } catch (err) {
-    console.error('[register]', err.message);
+    console.error('[register] Caught exception (full):', JSON.stringify(err, Object.getOwnPropertyNames(err), 2));
+
+    // MySQL duplicate entry (email already in users table but not Supabase — edge case)
     if (err.code === 'ER_DUP_ENTRY') {
-      return res.status(409).json({ error: 'Email already registered' });
+      return res.status(409).json({ error: 'An account with this email address already exists. Please sign in instead.' });
     }
-    res.status(500).json({ error: 'Registration failed' });
+    res.status(500).json({ error: 'Something went wrong. Please try again in a moment.' });
   }
 });
 

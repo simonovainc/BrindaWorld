@@ -29,8 +29,10 @@ function Register() {
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState('');
 
-  const set = (key) => (e) =>
+  const set = (key) => (e) => {
+    setError('');   // clear error as soon as user edits anything
     setForm(p => ({ ...p, [key]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }));
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -50,7 +52,8 @@ function Register() {
       await register(form.email, form.password, form.firstName, form.lastName, form.role);
       navigate('/dashboard');
     } catch (err) {
-      setError(err.response?.data?.error || 'Registration failed. Please try again.');
+      // AuthContext.register() always throws a plain Error with the server message
+      setError(err.message || 'Something went wrong. Please try again in a moment.');
     } finally {
       setLoading(false);
     }
@@ -82,13 +85,20 @@ function Register() {
           border: `1px solid ${T.border}`,
         }}>
 
+          <h2 style={{ color: T.text, margin: '0 0 1.25rem', fontSize: '1.1rem', fontWeight: 700 }}>
+            Create your account
+          </h2>
+
           {error && (
-            <div style={{
-              color: T.primary, background: '#fff0f5',
-              border: `1px solid ${T.border}`, borderRadius: 9,
-              padding: '0.75rem 1rem', marginBottom: '1.25rem', fontSize: '0.88rem',
+            <div role="alert" style={{
+              display: 'flex', alignItems: 'flex-start', gap: '0.5rem',
+              color: '#991b1b', background: '#fef2f2',
+              border: '1px solid #fecaca', borderRadius: 9,
+              padding: '0.75rem 1rem', marginBottom: '1.25rem',
+              fontSize: '0.88rem', lineHeight: 1.5,
             }}>
-              {error}
+              <span style={{ fontSize: '1rem', flexShrink: 0 }}>⚠️</span>
+              <span>{error}</span>
             </div>
           )}
 

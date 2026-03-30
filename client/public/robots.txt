@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /dashboard
+Disallow: /teacher/dashboard
+Disallow: /admin
+Sitemap: https://brindaworld.ca/sitemap.xml

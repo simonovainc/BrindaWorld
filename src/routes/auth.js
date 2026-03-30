@@ -145,6 +145,12 @@ router.post('/register', async (req, res) => {
 
     res.status(201).json({ user, session });
 
+    // Non-blocking welcome email (Phase 3 S2)
+    try {
+      const { sendWelcomeEmail } = require('../services/emailService');
+      sendWelcomeEmail({ email: user.email, firstName: user.firstName }).catch(e => console.error('[Email]', e.message));
+    } catch (_) { /* emailService not available */ }
+
   } catch (err) {
     console.error('[register] Caught exception (full):', JSON.stringify(err, Object.getOwnPropertyNames(err), 2));
 

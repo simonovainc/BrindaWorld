@@ -186,9 +186,72 @@ Score labels:
 
 ---
 
+## Phase 2 Additions
+
+### New Server Files
+| File | Purpose |
+|---|---|
+| `src/routes/teachers.js` | Teacher auth (bcrypt+JWT), class management, student progress, notes |
+| `src/routes/competitions.js` | Extended competition routes: active list, score submission |
+| `src/middleware/performance.js` | Helmet, rate limiting, compression, cache headers |
+| `src/middleware/validation.js` | Input sanitization, param pollution prevention, security logging |
+
+### New Client Files
+| File | Purpose |
+|---|---|
+| `pages/TeacherRegister.jsx` | Teacher registration page |
+| `pages/TeacherLogin.jsx` | Teacher sign-in page |
+| `pages/TeacherDashboard.jsx` | Class management + student progress + printable reports |
+| `components/Leaderboard.jsx` | Competition leaderboard display |
+| `components/DemoModeBanner.jsx` | Demo mode for school board presentations |
+
+### New API Routes (Phase 2)
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| POST | `/api/teachers/register` | Public | Teacher registration |
+| POST | `/api/teachers/login` | Public | Teacher login |
+| GET | `/api/teachers/me` | Teacher JWT | Profile |
+| GET | `/api/teachers/classes` | Teacher JWT | List classes |
+| POST | `/api/teachers/classes` | Teacher JWT | Create class |
+| GET | `/api/teachers/classes/:id/students` | Teacher JWT | Class students |
+| GET | `/api/teachers/classes/:id/student/:pid` | Teacher JWT | Student detail |
+| POST | `/api/teachers/notes` | Teacher JWT | Add note |
+| POST | `/api/teachers/assignments` | Teacher JWT | Create assignment |
+| POST | `/api/teachers/classes/:code/join` | Parent JWT | Join child to class |
+| GET | `/api/competitions/active` | Public | Active competitions |
+| POST | `/api/competitions/:id/score` | Parent JWT | Submit score |
+
+### Pending Migrations (Phase 2)
+| File | Tables |
+|---|---|
+| `phase2/logs/migration_017_TODO.sql` | teachers, teacher_classes, class_enrollments, teacher_notes, teacher_assignments |
+| `phase2/logs/migration_018_TODO.sql` | competition_scores, competition column additions |
+
+### Security & Performance (Phase 2)
+- Helmet security headers
+- Rate limiting: 300 req/15min global, 15 auth attempts/15min
+- Gzip compression (threshold 1KB)
+- Cache headers (immutable for static, no-store for API)
+- XSS sanitization on all request bodies
+- HTTP parameter pollution prevention
+- Security logging for suspicious requests
+- React.lazy() code splitting for heavy pages
+
+### Demo Mode
+- URL: `https://brindaworld.ca?demo=true`
+- Activates sample data for school board presentations
+- Sticky banner indicates demo mode
+- Exit button returns to normal mode
+
+---
+
 ## Deployment Checklist (Owner)
 
-1. Run `ALL_PENDING_MIGRATIONS.sql` in phpMyAdmin
-2. Redeploy Hostinger Node.js app
-3. Visit https://lemonchiffon-gnat-615577.hostingersite.com
-4. Test: register → dashboard → add child → submit feedback
+1. Run `phase2/logs/migration_017_TODO.sql` in phpMyAdmin
+2. Run `phase2/logs/migration_018_TODO.sql` in phpMyAdmin
+3. Run `phase2/logs/seed_competition.sql` in phpMyAdmin
+4. Set `JWT_SECRET` in server `.env`
+5. Redeploy Hostinger Node.js app
+6. Visit https://brindaworld.ca
+7. Test: teacher register → create class → parent joins → student progress
+8. Test demo mode: https://brindaworld.ca?demo=true

@@ -1,0 +1,71 @@
+{
+  "province": "New Brunswick",
+  "lastUpdated": "2026-03",
+  "subjects": {
+    "chess": {
+      "icon": "♛",
+      "title": "Chess",
+      "nbSubjects": ["Mathematics", "Personal Development"],
+      "gradeRange": "K-8",
+      "outcomes": {
+        "K-2": ["Pattern recognition", "Spatial reasoning", "Following rules", "Turn-taking"],
+        "3-5": ["Strategic thinking", "Problem decomposition", "Planning ahead", "Logical reasoning"],
+        "6-8": ["Critical analysis", "Decision-making under pressure", "Multi-step problem solving"]
+      }
+    },
+    "coding": {
+      "icon": "💻",
+      "title": "Coding",
+      "nbSubjects": ["Technology", "Mathematics", "Science"],
+      "gradeRange": "1-8",
+      "outcomes": {
+        "1-2": ["Sequencing", "Algorithms (step-by-step instructions)", "Debugging (finding mistakes)"],
+        "3-5": ["Loops and conditionals", "Variables and data types", "Decomposition of complex tasks"],
+        "6-8": ["Functions and modularity", "Data structures", "Web development basics (HTML/CSS)"]
+      }
+    },
+    "geography": {
+      "icon": "🌍",
+      "title": "Geography",
+      "nbSubjects": ["Social Studies", "Science"],
+      "gradeRange": "K-8",
+      "outcomes": {
+        "K-2": ["Continents and oceans", "Local community geography", "Maps and directions"],
+        "3-5": ["Countries and capitals", "Climate zones", "Cultural diversity", "Natural resources"],
+        "6-8": ["Geopolitical awareness", "Environmental issues", "Population and migration", "Economic geography"]
+      }
+    },
+    "she_can_be": {
+      "icon": "🌟",
+      "title": "She Can Be (Role Models)",
+      "nbSubjects": ["Social Studies", "Health", "Personal Development"],
+      "gradeRange": "K-8",
+      "outcomes": {
+        "K-2": ["Community helpers", "What grown-ups do for work", "Diversity in careers"],
+        "3-5": ["Canadian women in leadership", "Career exploration", "Self-confidence building"],
+        "6-8": ["Gender equity", "Civic engagement", "Biographies of Canadian leaders", "Career planning"]
+      }
+    },
+    "confidence": {
+      "icon": "💪",
+      "title": "Confidence & Resilience",
+      "nbSubjects": ["Health", "Personal Development", "Physical Education"],
+      "gradeRange": "K-8",
+      "outcomes": {
+        "K-2": ["Self-expression", "Identifying emotions", "Positive self-talk"],
+        "3-5": ["Growth mindset", "Handling failure", "Setting personal goals"],
+        "6-8": ["Resilience strategies", "Self-advocacy", "Stress management", "Identity and self-esteem"]
+      }
+    },
+    "leadership": {
+      "icon": "👑",
+      "title": "Leadership & Citizenship",
+      "nbSubjects": ["Social Studies", "Personal Development"],
+      "gradeRange": "3-8",
+      "outcomes": {
+        "3-5": ["Teamwork", "Fair play", "Responsibility", "Community participation"],
+        "6-8": ["Democratic values", "Conflict resolution", "Public speaking", "Civic responsibility", "Ethical decision-making"]
+      }
+    }
+  }
+}

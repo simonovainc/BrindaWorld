@@ -754,7 +754,7 @@ function Home() {
               <Link to="/login" className="footer-link" style={{ fontSize: '0.88rem', transition: 'color 0.15s' }}>Sign In</Link>
             </div>
             <div style={{ marginBottom: '0.5rem' }}>
-              <a href="https://brindaworld.ca/teachers.html" target="_blank" rel="noopener noreferrer" className="footer-link" style={{ fontSize: '0.88rem', transition: 'color 0.15s' }}>Teachers</a>
+              <Link to="/teacher/login" className="footer-link" style={{ fontSize: '0.88rem', transition: 'color 0.15s' }}>Teachers</Link>
             </div>
             <div style={{ marginBottom: '0.5rem' }}>
               <Link to="/about" className="footer-link" style={{ fontSize: '0.88rem', transition: 'color 0.15s' }}>About</Link>
@@ -788,6 +788,14 @@ function Home() {
               </div>
             ))}
           </div>
+        </div>
+
+        {/* School Demo Link */}
+        <div style={{ textAlign: 'center', padding: '20px', borderTop: '1px solid rgba(255,255,255,0.1)', marginTop: 10 }}>
+          <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 13 }}>For educators and school boards:</p>
+          <a href="/?demo=true" style={{ color: '#FF1493', fontWeight: 700, fontSize: 15, textDecoration: 'none' }}>
+            🏫 View School Demo →
+          </a>
         </div>
 
         {/* Bottom bar */}

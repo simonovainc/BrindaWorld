@@ -136,10 +136,25 @@ function Dashboard() {
   const [svcLoading,  setSvcLoading]  = useState(false);
   const [svcStatus,   setSvcStatus]   = useState(null);
 
+  // ── Join class ──
+  const [joinCode, setJoinCode] = useState('');
+  const [joinChildId, setJoinChildId] = useState('');
+  const [joinLoading, setJoinLoading] = useState(false);
+  const [joinStatus, setJoinStatus] = useState(null);
+
   // ── Load KPI summary ──────────────────────────────────────────────────────
   const loadSummary = useCallback(async () => {
     setKpiLoading(true);
     try {
+      // Demo mode bypass
+      if (localStorage.getItem('demo_mode') === 'true') {
+        const { DEMO_DATA } = await import('../components/DemoModeBanner');
+        setSummary(DEMO_DATA.summary);
+        setWeeklyActivity(DEMO_DATA.weekly_activity);
+        setDashChildren(DEMO_DATA.children);
+        setKpiLoading(false);
+        return;
+      }
       const res = await api.get('/dashboard/summary');
       setSummary(res.data.summary);
       setWeeklyActivity(res.data.weekly_activity);
@@ -511,6 +526,55 @@ function Dashboard() {
                 </div>
               ))}
             </div>
+          )}
+        </div>
+
+        {/* ════ JOIN CLASS CARD ════ */}
+        <div style={{
+          background: T.card, borderRadius: 18, border: `1px solid ${T.border}`,
+          padding: '1.5rem 1.75rem', boxShadow: '0 3px 18px rgba(214,51,132,0.08)', marginBottom: '1.75rem',
+        }}>
+          <h2 style={{ color: T.text, margin: '0 0 0.25rem', fontSize: '1.05rem', fontWeight: 700 }}>Join a Class 🏫</h2>
+          <p style={{ color: T.light, margin: '0 0 1rem', fontSize: '0.85rem' }}>
+            Has your daughter's teacher shared a class code?
+          </p>
+          {joinStatus === 'success' ? (
+            <div style={{ background: '#f0fff4', border: '1px solid #9ae6b4', color: '#276749', borderRadius: 8, padding: '0.7rem', fontSize: '0.88rem' }}>
+              Joined! Your daughter is now in the class. 🎉
+            </div>
+          ) : (
+            <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+              <div style={{ flex: '1 1 140px' }}>
+                <label style={labelStyle}>Join Code</label>
+                <input type="text" maxLength={6} placeholder="ABC123" value={joinCode}
+                  onChange={e => { setJoinCode(e.target.value.toUpperCase()); setJoinStatus(null); }}
+                  style={{ ...inputStyle, textTransform: 'uppercase', letterSpacing: '0.15em', fontWeight: 700 }} />
+              </div>
+              <div style={{ flex: '1 1 160px' }}>
+                <label style={labelStyle}>Child</label>
+                <select value={joinChildId} onChange={e => setJoinChildId(e.target.value)} style={selectStyle}>
+                  <option value="">-- Select child --</option>
+                  {displayChildren.map(c => <option key={c.id} value={c.id}>{c.displayName || c.name}</option>)}
+                </select>
+              </div>
+              <button
+                disabled={joinLoading || !joinCode.trim() || !joinChildId}
+                onClick={async () => {
+                  setJoinLoading(true); setJoinStatus(null);
+                  try {
+                    await api.post(`/teachers/classes/${joinCode}/join`, { childPublicId: joinChildId });
+                    setJoinStatus('success'); setJoinCode(''); setJoinChildId('');
+                  } catch (err) {
+                    setJoinStatus(err.response?.data?.error || 'Failed to join class.');
+                  } finally { setJoinLoading(false); }
+                }}
+                style={btnPrimary(joinLoading || !joinCode.trim() || !joinChildId)}>
+                {joinLoading ? 'Joining...' : 'Join Class'}
+              </button>
+            </div>
+          )}
+          {joinStatus && joinStatus !== 'success' && (
+            <p style={{ color: '#991b1b', fontSize: '0.82rem', marginTop: '0.5rem' }}>{joinStatus}</p>
           )}
         </div>
 

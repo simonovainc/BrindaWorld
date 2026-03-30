@@ -667,4 +667,75 @@ router.post('/competitions/:id/enter', verifyToken, async (req, res) => {
   }
 });
 
+// ── GET /api/curriculum (Phase 3 S6) ─────────────────────────────────────────
+router.get('/curriculum', (req, res) => {
+  try {
+    const curriculum = require('../data/curriculum.json');
+    res.set('Cache-Control', 'public, max-age=86400'); // 24 hours
+    res.json({ success: true, curriculum });
+  } catch (e) {
+    res.status(500).json({ success: false, error: 'Could not load curriculum' });
+  }
+});
+
+// ── GET /api/admin/analytics (Phase 3 S7) ────────────────────────────────────
+// Protected by admin key header or query param.
+router.get('/admin/analytics', async (req, res) => {
+  const key = req.headers['x-admin-key'] || req.query.key;
+  if (!process.env.ADMIN_KEY || key !== process.env.ADMIN_KEY) {
+    return res.status(403).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    const stats = {};
+
+    // Total users
+    try { const [r] = await pool.query('SELECT COUNT(*) AS c FROM users WHERE deleted_at IS NULL'); stats.total_users = r[0].c; } catch (_) { stats.total_users = 0; }
+
+    // Total children
+    try { const [r] = await pool.query('SELECT COUNT(*) AS c FROM children WHERE deleted_at IS NULL'); stats.total_children = r[0].c; } catch (_) { stats.total_children = 0; }
+
+    // Total sessions
+    try { const [r] = await pool.query('SELECT COUNT(*) AS c FROM game_sessions'); stats.total_sessions = r[0].c; } catch (_) { stats.total_sessions = 0; }
+
+    // Total teachers
+    try { const [r] = await pool.query('SELECT COUNT(*) AS c FROM teachers WHERE deleted_at IS NULL'); stats.total_teachers = r[0].c; } catch (_) { stats.total_teachers = 0; }
+
+    // Active this week
+    try {
+      const [r] = await pool.query('SELECT COUNT(DISTINCT child_id) AS c FROM game_sessions WHERE started_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)');
+      stats.active_this_week = r[0].c;
+    } catch (_) { stats.active_this_week = 0; }
+
+    // Avg session duration
+    try {
+      const [r] = await pool.query('SELECT AVG(duration_seconds)/60 AS m FROM game_sessions WHERE duration_seconds > 0');
+      stats.avg_session_min = Math.round(r[0].m || 0);
+    } catch (_) { stats.avg_session_min = 0; }
+
+    // Games breakdown
+    try {
+      const [r] = await pool.query(
+        'SELECT game_id, COUNT(*) AS count, AVG(score_percent) AS avg_score FROM game_sessions GROUP BY game_id ORDER BY count DESC LIMIT 10'
+      );
+      stats.games_breakdown = r;
+    } catch (_) { stats.games_breakdown = []; }
+
+    // Signups by day (last 30 days)
+    try {
+      const [r] = await pool.query(
+        `SELECT DATE(created_at) AS date, COUNT(*) AS count FROM users
+         WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY) AND deleted_at IS NULL
+         GROUP BY DATE(created_at) ORDER BY date ASC`
+      );
+      stats.signups_by_day = r;
+    } catch (_) { stats.signups_by_day = []; }
+
+    res.json({ stats });
+  } catch (err) {
+    console.error('[admin/analytics]', err.message);
+    res.status(500).json({ error: 'Failed to fetch analytics' });
+  }
+});
+
 module.exports = router;
